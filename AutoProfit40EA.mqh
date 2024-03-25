@@ -10,6 +10,11 @@
 #include <Mircea\_profitpoint\Lang\GlobalVariable.mqh>
 
 /*
+Updates:
+2024.03.07 - Am mofificat  LateStart sa il puna lateStart = lateStart - 1 la inceput
+2024.03.10 - Am mofificat  Fixat iara Late Start
+2024.03.15 - Am fixat StopLoss/TakeProfit sa permita sa existe simultan
+
 NOTES:
 - INTREBARE VREAU SA FACA TRAILING CHIAR DACA FACE MEDIERE DUPA CE AJUNGE PE PROFIT SA LE SECURIZEZE ORICUM Momentan da
 Sa fiu atent la bid si ask
@@ -56,10 +61,10 @@ struct STrailingValues
 //+------------------------------------------------------------------+
 class CAutoProfit40: public CExpertAdvisor
 {
-//+------------------------------------------------------------------+
-//| scalingOrAveraging  - ENUM_DIRECTION_BULLISH = Scaling
-//|                     - ENUM_DIRECTION_BEARISH = Averaging
-//+------------------------------------------------------------------+
+   //+------------------------------------------------------------------+
+   //| scalingOrAveraging  - ENUM_DIRECTION_BULLISH = Scaling
+   //|                     - ENUM_DIRECTION_BEARISH = Averaging
+   //+------------------------------------------------------------------+
 private:
    CAutoProfit40Params* _params;
    CTradeManager     _tradeManager;
@@ -80,8 +85,8 @@ private:
    bool              _isNewCandle;
 
 public:
-   CAutoProfit40(CAutoProfit40Params &params): TRADE_ON_NEW_CANDLE(params.GetIsNewCandleTrade()),
-      GLOBAL_PREFIX(StringFormat("%s|%s|%s|", __appShortName__, params.GetSymbol(), IntegerToString(params.GetMagic())))
+                     CAutoProfit40(CAutoProfit40Params &params): TRADE_ON_NEW_CANDLE(params.GetIsNewCandleTrade()),
+                     GLOBAL_PREFIX(StringFormat("%s|%s|%s|", __appShortName__, params.GetSymbol(), IntegerToString(params.GetMagic())))
    {
 
       _params = GetPointer(params);
@@ -104,7 +109,7 @@ public:
       _candleInfo = new CCandleInfo(_params.GetSymbol(), PERIOD_CURRENT);
       OnReInit();
    }
-   ~CAutoProfit40()
+                    ~CAutoProfit40()
    {
       SafeDelete(_equityStopService);
       SafeDelete(_candleInfo);
@@ -117,7 +122,7 @@ protected:
    virtual void       OnReInit();
 
 protected:
-//Strategy
+   //Strategy
    virtual void               ManageTrades(ENUM_DIRECTION direction);
    virtual double             ComputeTakeProfit(ENUM_DIRECTION direction);
    virtual void               ComputeTrailingStart(ENUM_DIRECTION direction); // sa ma uit in metoda de manageBuys/Sells sa vad ce si cum
@@ -125,7 +130,7 @@ protected:
    virtual bool               CheckScalingStep(ENUM_DIRECTION direction);
    virtual bool               CheckNewCandle();
 
-//Trailing
+   //Trailing
    virtual bool               ManageTrailing(ENUM_DIRECTION direction);
    virtual bool               CheckTrailingReference(ENUM_DIRECTION direction, const double referencePrice, const double currentPrice);
    virtual double             GetSLTrailingPrice(ENUM_DIRECTION direction, const double currentPrice);
@@ -133,19 +138,20 @@ protected:
    virtual void               ResetTrailingValues(ENUM_DIRECTION direction);
    virtual double             GetTrailingReferencePrice(ENUM_DIRECTION direction);
    virtual double             GetTrailingCurrentPrice(ENUM_DIRECTION direction);
+   virtual double             GetTrailingCurrentStopLoss(ENUM_DIRECTION direction);
 
-//Execution
+   //Execution
    virtual long               OpenTrade(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOrAveraging);
    virtual long               OpenFirstTrade(ENUM_DIRECTION direction);
    virtual bool               ModifyTrades(ENUM_DIRECTION direction, const double takeProfitPrice = 0.0, const double stopLossPrice = 0.0);
    virtual double             GetLots(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOrAveraging);
 
-//Drawdown
+   //Drawdown
    virtual void               ManageDrawDown();
    virtual bool               CheckDrawDownToClose();
    virtual double             GetDrawDown();
 
-//DashBoardSettings
+   //DashBoardSettings
    virtual void               ManageDashboard();
    virtual void               DisplayExpertInfo();
    virtual void               PrintInputParams(); //TODO toate valorile
@@ -197,7 +203,8 @@ void CAutoProfit40::Main(void)
 //+------------------------------------------------------------------+
 void CAutoProfit40::ManageTrades(ENUM_DIRECTION direction)
 {
-   if(direction == ENUM_DIRECTION_NEUTRAL) return;
+   if(direction == ENUM_DIRECTION_NEUTRAL)
+      return;
 
    int positions = (direction == ENUM_DIRECTION_BULLISH)
                    ? _sTradeDetails.buyPositions
@@ -216,7 +223,7 @@ void CAutoProfit40::ManageTrades(ENUM_DIRECTION direction)
 
    if(ManageTrailing(direction))
    {
-//     return; TODO think about it
+      //     return; TODO think about it
    }
 
    if(positions > 0 && CheckNewCandle())
@@ -225,7 +232,7 @@ void CAutoProfit40::ManageTrades(ENUM_DIRECTION direction)
       {
          OpenTrade(direction, ENUM_DIRECTION_BEARISH);
          double tp = ComputeTakeProfit(direction);
-         ModifyTrades(direction, tp, 0.0);
+         ModifyTrades(direction, tp, GetTrailingCurrentStopLoss(direction));
          ComputeTrailingStart(direction);
       }
 
@@ -377,7 +384,19 @@ double CAutoProfit40::GetTrailingCurrentPrice(ENUM_DIRECTION direction)
    double currentPrice = CTradeUtils::EndPrice(_params.GetSymbol(), type);
    return currentPrice;
 }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double CAutoProfit40::GetTrailingCurrentStopLoss(ENUM_DIRECTION direction)
+{
+   if(direction == ENUM_DIRECTION_BULLISH)
+      return (_trailingValuesBuy.trailingCurrentSLValue == WRONG_VALUE) ? (0.0) : _trailingValuesBuy.trailingCurrentSLValue;
 
+   if(direction == ENUM_DIRECTION_BEARISH)
+      return (_trailingValuesSell.trailingCurrentSLValue == WRONG_VALUE) ? (0.0) : _trailingValuesSell.trailingCurrentSLValue ;
+
+   return (0.0);
+}
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -421,7 +440,7 @@ long CAutoProfit40::OpenTrade(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOr
    string scalingOrAveragingStr = (scalingOrAveraging == ENUM_DIRECTION_BULLISH) ? "SC" : "AV";
    int positions = (direction == ENUM_DIRECTION_BULLISH) ? _sTradeDetails.buyPositions : _sTradeDetails.sellPositions;
 // Perform market trade and check for successful ticket
-   string comment = StringFormat("%s:%s,#%d", scalingOrAveragingStr, IntegerToString(_params.GetMagic()), positions + 1);
+   string comment = StringFormat("%s:%s,#%d", scalingOrAveragingStr, IntegerToString(_params.GetMagic()), positions);
 
    double stopLoss = 0.0;
 
@@ -446,7 +465,7 @@ long CAutoProfit40::OpenFirstTrade(ENUM_DIRECTION direction)
    if(orderType < 0)
       return false; // If conversion fails, return false
 
-   string comment = StringFormat("%s,#%d", IntegerToString(_params.GetMagic()), 1);
+   string comment = StringFormat("%s,#%d", IntegerToString(_params.GetMagic()), 0);
 
    return _tradeManager.Market(orderType, lots, 0.0, 0.0, comment);
 }
@@ -471,10 +490,8 @@ double CAutoProfit40::GetLots(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOr
    double factor = (scalingOrAveraging == ENUM_DIRECTION_BULLISH) ? _params.GetFactorScaling() : _params.GetFactorAveraging();
    double maxLot = (scalingOrAveraging == ENUM_DIRECTION_BULLISH) ? _params.GetMaxLotScaling() : _params.GetMaxLotAveraging();
 
-
-
    lots = CRiskService::GetVolumeBasedOnMartinGaleBatch(
-             positions - ((scalingOrAveraging == ENUM_DIRECTION_BEARISH) ? _params.GetLateStart() : 0), //trebe +1 ca sa faca multiplicare altfel am trades-latestart = 0 si imi face POW(x,0)=1
+             positions - (scalingOrAveraging == ENUM_DIRECTION_BEARISH ? _params.GetLateStart() : 0),//positions - ((scalingOrAveraging == ENUM_DIRECTION_BEARISH) ? _params.GetLateStart() : 0) + (scalingOrAveraging == ENUM_DIRECTION_BEARISH ? 1 : 0)//, //trebe +1 ca sa faca multiplicare altfel am trades-latestart = 0 si imi face POW(x,0)=1
              factor,
              _params.GetSymbol(),
              _params.GetLot(),
@@ -492,23 +509,23 @@ double CAutoProfit40::GetLots(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOr
 //+------------------------------------------------------------------+
 void CAutoProfit40::LoadGlobalVariables(ENUM_DIRECTION direction)
 {
-   //Daca gasesc valorile pt trailing, continua
-   //if (!CheckGlobalVariables(direction))
-   //{
-   //   ComputeGlobalVariables(direction); //Rename
-   //   //return;
-   //}
+//Daca gasesc valorile pt trailing, continua
+//if (!CheckGlobalVariables(direction))
+//{
+//   ComputeGlobalVariables(direction); //Rename
+//   //return;
+//}
 
-   //Daca NU gasesc valorile pt trailing, calculeaza
+//Daca NU gasesc valorile pt trailing, calculeaza
    ComputeGlobalVariables(direction); //Rename
 
-   if (direction == ENUM_DIRECTION_BULLISH && !_trailingValuesBuy.isTrailing)
+   if(direction == ENUM_DIRECTION_BULLISH && !_trailingValuesBuy.isTrailing)
    {
       ResetTrailingValues(direction);
       ComputeTrailingStart(direction);
    }
 
-   if (direction == ENUM_DIRECTION_BEARISH && !_trailingValuesSell.isTrailing)
+   if(direction == ENUM_DIRECTION_BEARISH && !_trailingValuesSell.isTrailing)
    {
       ResetTrailingValues(direction);
       ComputeTrailingStart(direction);
@@ -526,7 +543,7 @@ bool CAutoProfit40::CheckGlobalVariables(ENUM_DIRECTION direction)
          _globalVariableManager.Exists(TRAILING_STEP_BUY) &&
          _globalVariableManager.Exists(TRAILING_STOPLOSS_BUY))
    {
-      _trailingValuesBuy.isTrailing =  (bool) _globalVariableManager.Get(IS_TRAILING_BUY);
+      _trailingValuesBuy.isTrailing = (bool) _globalVariableManager.Get(IS_TRAILING_BUY);
       _trailingValuesBuy.trailingStartPrice = _globalVariableManager.Get(TRAILING_START_BUY);
       _trailingValuesBuy.trailingStepPrice = _globalVariableManager.Get(TRAILING_STEP_BUY);
       _trailingValuesBuy.trailingCurrentSLValue = _globalVariableManager.Get(TRAILING_STOPLOSS_BUY);
@@ -539,7 +556,7 @@ bool CAutoProfit40::CheckGlobalVariables(ENUM_DIRECTION direction)
          _globalVariableManager.Exists(TRAILING_STEP_SELL) &&
          _globalVariableManager.Exists(TRAILING_STOPLOSS_SELL))
    {
-      _trailingValuesSell.isTrailing =  (bool) _globalVariableManager.Get(IS_TRAILING_SELL);
+      _trailingValuesSell.isTrailing = (bool) _globalVariableManager.Get(IS_TRAILING_SELL);
       _trailingValuesSell.trailingStartPrice = _globalVariableManager.Get(TRAILING_START_SELL);
       _trailingValuesSell.trailingStepPrice = _globalVariableManager.Get(TRAILING_STEP_SELL);
       _trailingValuesSell.trailingCurrentSLValue = _globalVariableManager.Get(TRAILING_STOPLOSS_SELL);
@@ -644,7 +661,8 @@ void CAutoProfit40::OnReInit(void)
 //+------------------------------------------------------------------+
 bool CAutoProfit40::CheckTrailingReference(ENUM_DIRECTION direction, const double referencePrice, const double currentPrice)
 {
-   if(referencePrice == WRONG_VALUE) return false;
+   if(referencePrice <= 0.0)
+      return false;
 
    if(direction == ENUM_DIRECTION_BULLISH && currentPrice >= referencePrice)
       return true;
