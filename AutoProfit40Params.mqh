@@ -19,49 +19,82 @@
 
 
 
-const ulong __authorizedAccounts[] = {522562};
+const ulong __authorizedAccounts[] = {522562,533331,533332};
 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-class CAutoProfit40Params : public CAppParams
+class CAutoSmartProParams : public CAppParams
 {
-   ObjectAttrProtected(int, Magic);
-   ObjectAttrBoolProtected(Martingale);
-   ObjectAttrProtected(double, FactorAveraging);
-   ObjectAttrProtected(double, FactorScaling);
-   ObjectAttrProtected(int, TakeProfit);
-   ObjectAttrProtected(int, StepAveraging);
-   ObjectAttrProtected(int, StepScaling);
-   ObjectAttrProtected(double, Lot);
-   ObjectAttrProtected(double, MaxLotAveraging);
-   ObjectAttrProtected(double, MaxLotScaling);
+                     ObjectAttrProtected(int, Magic);
+                     ObjectAttrBoolProtected(Martingale);
+                     ObjectAttrProtected(double, FactorAveraging);
+                     ObjectAttrProtected(double, FactorScaling);
+                     ObjectAttrProtected(int, TakeProfit);
+                     ObjectAttrProtected(int, StepAveraging);
+                     ObjectAttrProtected(int, StepScaling);
+                     ObjectAttrProtected(double, Lot);
+                     ObjectAttrProtected(double, MaxLotAveraging);
+                     ObjectAttrProtected(double, MaxLotScaling);
+                     ObjectAttrProtected(int, TrailingStop);
+                     ObjectAttrProtected(int, TrailingStart);
+                     ObjectAttrProtected(int, TrailingStep);
+                     ObjectAttrProtected(bool, IsNewCandleTrade);
+                     ObjectAttrProtected(int, LateStart);
+                     ObjectAttrBoolProtected(CloseAtDrawDown);
+                     ObjectAttrProtected(ENUM_DRAWDOWN_TYPE, DrawDownType);
+                     ObjectAttrProtected(double, DrawDownToCloseValue);
+                     ObjectAttrProtected(int, MaxTrades);
+                     ObjectAttrProtected(int, SpreadFilter);
+                     ObjectAttrBoolProtected(DisplayInformaion);
+                     ObjectAttrProtected(string, Symbol);
 
-   ObjectAttrProtected(int, TrailingStop);
-   ObjectAttrProtected(int, TrailingStart);
-   ObjectAttrProtected(int, TrailingStep);
+public:
+   virtual void              CAutoSmartProParams::PrintParamters(void)
+   {
+      string msg = StringFormat("%s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s",
+                                nameOf(mMagic), IntegerToString(mMagic),
+                                nameOf(mIsMartingale), CString::FormatBool(mIsMartingale),
+                                nameOf(mFactorAveraging), DoubleToString(mFactorAveraging, 5),
+                                nameOf(mFactorScaling), DoubleToString(mFactorScaling, 5),
 
-   ObjectAttrProtected(bool, IsNewCandleTrade);
-   ObjectAttrProtected(int, LateStart);
-   ObjectAttrBoolProtected(CloseAtDrawDown);
-   ObjectAttrProtected(ENUM_DRAWDOWN_TYPE, DrawDownType);
-   ObjectAttrProtected(double, DrawDownToCloseValue);
-   ObjectAttrProtected(int, MaxTrades);
-   ObjectAttrProtected(int, SpreadFilter);
-   ObjectAttrBoolProtected(DisplayInformaion);
-   ObjectAttrProtected(string, Symbol);
+                                nameOf(mTakeProfit), IntegerToString(mTakeProfit),
+                                nameOf(mStepAveraging), IntegerToString(mStepAveraging),
+                                nameOf(mStepScaling), IntegerToString(mStepScaling, 3),
+                                nameOf(mMaxLot), DoubleToString(mLot, 2),
+                                nameOf(mMaxLotAveraging), DoubleToString(mMaxLotAveraging, 2),
+                                nameOf(mMaxLotScaling), DoubleToString(mMaxLotScaling, 2),
+
+                                nameOf(mTrailingStop), IntegerToString(mTrailingStop),
+                                nameOf(mTrailingStart), IntegerToString(mTrailingStart),
+                                nameOf(mTrailingStep), IntegerToString(mTrailingStep),
+
+                                nameOf(mIsNewCandleTrade), CString::FormatBool(mIsNewCandleTrade),
+                                nameOf(mLateStart), IntegerToString(mLateStart),
+                                nameOf(mIsCloseAtDrawDown), CString::FormatBool(mIsCloseAtDrawDown),
+                                nameOf(mDrawDownType), EnumToString(mDrawDownType),
+                                nameOf(mDrawDownToCloseValue), DoubleToString(mDrawDownToCloseValue, 3),
+
+                                nameOf(mMaxTrades), IntegerToString(mMaxTrades),
+                                nameOf(mSpreadFilter),  IntegerToString(mSpreadFilter),
+                                nameOf(mIsDisplayInformaion), CString::FormatBool(mIsDisplayInformaion)
+                               );
+
+      Print(msg);
+   }
+
 
 public:
    bool               Check() override
-   {  
-      
+   {
+
       //if(!CMQLInfo::IsTesting_()) return false;
-      
-      //if(!CAuthorization::Authorize(__authorizedAccounts))
-      //{
-      //   Alert("This Expert Advisor is only available on demo accounts or strategy tester");
-      //   return false;
-      //}
+
+      if(!CAuthorization::Authorize(__authorizedAccounts))
+      {
+         Alert("This Expert Advisor is only available on demo accounts or strategy tester");
+         return false;
+      }
 
 
       if(mMagic <= 0)
@@ -99,5 +132,9 @@ public:
 
       return true;
    }
+
+
+
+
 };
 //+------------------------------------------------------------------+

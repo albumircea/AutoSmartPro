@@ -14,6 +14,8 @@ Updates:
 2024.03.07 - Am mofificat  LateStart sa il puna lateStart = lateStart - 1 la inceput
 2024.03.10 - Am mofificat  Fixat iara Late Start
 2024.03.15 - Am fixat StopLoss/TakeProfit sa permita sa existe simultan
+2024.05.13 - Added Spread Filter + move print parameters method inside parameter class
+
 
 NOTES:
 - INTREBARE VREAU SA FACA TRAILING CHIAR DACA FACE MEDIERE DUPA CE AJUNGE PE PROFIT SA LE SECURIZEZE ORICUM Momentan da
@@ -23,22 +25,19 @@ Sa fiu atent la bid si ask
 de exemplu daca deschide un buy care ramane agatat sus eu am trailingu activat chiar daca nu mai are sens fiindca a incasat deja SL pozitiv pe suita
 sa recalculez sau sa nu recalculez SL daca mi-a  dat un trade nou pe complementare sau doar sa mosteneasca trailingu de la toata successiunea <?>
 
-DONE
-- PrintInputParams - Done
-- Sa urc toata treaba asta pe git
-- Sa nu modific TP daca tranzactiile deja au TP ->tradeManager ModifyBatch
 
 
 TODO
 - Store GlobalVariables
 - Fix IsSessionTrade FOR MQL4
-- FIX Trailing
+
 - flush la global variables atunci cand dau expert remove
 - OnReInit
 - Rename ComputeGlobalVariables
 - Insert into GlobalVariables StopLoss
-- LogWarning pentru Smart pentru SpreadFilter
+- LogWarning pentru Smart pentru SpreadFilter -TODO SA FAC SPREAD FILTER + EVENTUAL O CLASA SPREAD FILTER
 - Daca schimb valorile Trailing sa le ia in considerare dupa ce da ok(acum le ia din global variables)
+-
 */
 
 
@@ -59,16 +58,15 @@ struct STrailingValues
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-class CAutoProfit40: public CExpertAdvisor
+class CAutoSmartPro: public CExpertAdvisor
 {
    //+------------------------------------------------------------------+
    //| scalingOrAveraging  - ENUM_DIRECTION_BULLISH = Scaling
    //|                     - ENUM_DIRECTION_BEARISH = Averaging
    //+------------------------------------------------------------------+
 private:
-   CAutoProfit40Params* _params;
+   CAutoSmartProParams* _params;
    CTradeManager     _tradeManager;
-   STradesDetails    _sTradeDetails;
    STrailingValues   _trailingValuesBuy;
    STrailingValues   _trailingValuesSell;
    double            _trailingStopAbs, _trailingStepAbs;
@@ -80,12 +78,13 @@ private:
    static const string IS_TRAILING_BUY, IS_TRAILING_SELL, TRAILING_START_BUY, TRAILING_START_SELL, TRAILING_STEP_BUY, TRAILING_STEP_SELL, TRAILING_STOPLOSS_BUY, TRAILING_STOPLOSS_SELL;
    const string      GLOBAL_PREFIX;
 
-
    const bool        TRADE_ON_NEW_CANDLE;
    bool              _isNewCandle;
 
+protected:
+   STradesDetails    _sTradeDetails;
 public:
-                     CAutoProfit40(CAutoProfit40Params &params): TRADE_ON_NEW_CANDLE(params.GetIsNewCandleTrade()),
+                     CAutoSmartPro(CAutoSmartProParams &params): TRADE_ON_NEW_CANDLE(params.GetIsNewCandleTrade()),
                      GLOBAL_PREFIX(StringFormat("%s|%s|%s|", __appShortName__, params.GetSymbol(), IntegerToString(params.GetMagic())))
    {
 
@@ -109,7 +108,7 @@ public:
       _candleInfo = new CCandleInfo(_params.GetSymbol(), PERIOD_CURRENT);
       OnReInit();
    }
-                    ~CAutoProfit40()
+                    ~CAutoSmartPro()
    {
       SafeDelete(_equityStopService);
       SafeDelete(_candleInfo);
@@ -129,6 +128,7 @@ protected:
    virtual bool               CheckAveragingStep(ENUM_DIRECTION direction);
    virtual bool               CheckScalingStep(ENUM_DIRECTION direction);
    virtual bool               CheckNewCandle();
+   virtual int                GetStep(ENUM_DIRECTION scalingOrAveraging, ENUM_DIRECTION direction = ENUM_DIRECTION_NEUTRAL);
 
    //Trailing
    virtual bool               ManageTrailing(ENUM_DIRECTION direction);
@@ -164,28 +164,29 @@ protected:
    //
 };
 //BUY
-static const string CAutoProfit40::IS_TRAILING_BUY = "B_IsTral";
-static const string CAutoProfit40::TRAILING_START_BUY = "B_TralStart";
-static const string CAutoProfit40::TRAILING_STEP_BUY = "B_TralStep";
-static const string CAutoProfit40::TRAILING_STOPLOSS_BUY = "B_StopLoss";
+static const string CAutoSmartPro::IS_TRAILING_BUY = "B_IsTral";
+static const string CAutoSmartPro::TRAILING_START_BUY = "B_TralStart";
+static const string CAutoSmartPro::TRAILING_STEP_BUY = "B_TralStep";
+static const string CAutoSmartPro::TRAILING_STOPLOSS_BUY = "B_StopLoss";
 //SELL
-static const string CAutoProfit40::IS_TRAILING_SELL = "S_IsTralS";
-static const string CAutoProfit40::TRAILING_START_SELL = "S_TralStart";
-static const string CAutoProfit40::TRAILING_STEP_SELL = "S_TralStepS";
-static const string CAutoProfit40::TRAILING_STOPLOSS_SELL = "S_StopLoss";
+static const string CAutoSmartPro::IS_TRAILING_SELL = "S_IsTralS";
+static const string CAutoSmartPro::TRAILING_START_SELL = "S_TralStart";
+static const string CAutoSmartPro::TRAILING_STEP_SELL = "S_TralStepS";
+static const string CAutoSmartPro::TRAILING_STOPLOSS_SELL = "S_StopLoss";
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::Main(void)
+void CAutoSmartPro::Main(void)
 {
-   if(!CSymbolInfo::IsSessionTrade(_params.GetSymbol()))
+   if(  !CSymbolInfo::IsSessionTrade(_params.GetSymbol()) ||
+         CSymbolInfo::GetSpread(_params.GetSymbol()) > _params.GetSpreadFilter()
+     )
       return;
 
    CTradeUtils::CalculateTradesDetails(_sTradeDetails, _params.GetMagic(), _params.GetSymbol());
 
    if(_equityStopService.CheckEquityStop()) //CheckLoggingForClosingAllTrades
       return;
-
 
    if(TRADE_ON_NEW_CANDLE)
       _isNewCandle = _candleInfo.IsNewCandle();
@@ -201,7 +202,7 @@ void CAutoProfit40::Main(void)
 //+------------------------------------------------------------------+
 //|
 //+------------------------------------------------------------------+
-void CAutoProfit40::ManageTrades(ENUM_DIRECTION direction)
+void CAutoSmartPro::ManageTrades(ENUM_DIRECTION direction)
 {
    if(direction == ENUM_DIRECTION_NEUTRAL)
       return;
@@ -247,7 +248,7 @@ void CAutoProfit40::ManageTrades(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|
 //+------------------------------------------------------------------+
-bool CAutoProfit40::CheckAveragingStep(ENUM_DIRECTION direction)
+bool CAutoSmartPro::CheckAveragingStep(ENUM_DIRECTION direction)
 {
    int type =  CEnums::FromDirectionToMarketOrder(direction);
    ulong ticket = (direction == ENUM_DIRECTION_BULLISH)
@@ -268,15 +269,17 @@ bool CAutoProfit40::CheckAveragingStep(ENUM_DIRECTION direction)
 
    int distance = MathAbs(CTradeUtils::DistanceBetweenTwoPricesPoints(_positionInfo.PriceOpen(), price, _positionInfo.Symbol()));
 
+   ENUM_DIRECTION directionAveraging = ENUM_DIRECTION_BEARISH;
+
    if(direction == ENUM_DIRECTION_BULLISH)
    {
       //Ask - OrderOpenPrice() < 0
-      return (price - _positionInfo.PriceOpen() < 0 && distance >= _params.GetStepAveraging());
+      return (price - _positionInfo.PriceOpen() < 0 && distance >= GetStep(directionAveraging, direction)); //_params.GetStepAveraging()
    }
    if(direction == ENUM_DIRECTION_BEARISH)
    {
       //Bid - OrderOpenPrice() > 0
-      return (price - _positionInfo.PriceOpen() > 0 && distance >= _params.GetStepAveraging());
+      return (price - _positionInfo.PriceOpen() > 0 && distance >= GetStep(directionAveraging, direction));  //_params.GetStepAveraging()
    }
 
    return false;
@@ -284,7 +287,7 @@ bool CAutoProfit40::CheckAveragingStep(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool CAutoProfit40::CheckScalingStep(ENUM_DIRECTION direction)
+bool CAutoSmartPro::CheckScalingStep(ENUM_DIRECTION direction)
 {
    int type =  CEnums::FromDirectionToMarketOrder(direction);
    ulong ticket = (direction == ENUM_DIRECTION_BULLISH)
@@ -304,16 +307,17 @@ bool CAutoProfit40::CheckScalingStep(ENUM_DIRECTION direction)
    }
 
    int distance = MathAbs(CTradeUtils::DistanceBetweenTwoPricesPoints(_positionInfo.PriceOpen(), price, _positionInfo.Symbol()));
+   ENUM_DIRECTION directionScaling = ENUM_DIRECTION_BULLISH;
 
    if(direction == ENUM_DIRECTION_BULLISH)
    {
       //Ask - OrderOpenPrice() > 0
-      return (price - _positionInfo.PriceOpen() > 0 && distance >= _params.GetStepScaling());
+      return (price - _positionInfo.PriceOpen() > 0 && distance >= GetStep(directionScaling, direction)); //_params.GetStepScaling(
    }
    if(direction == ENUM_DIRECTION_BEARISH)
    {
       //Bid - OrderOpenPrice() < 0
-      return (price - _positionInfo.PriceOpen() < 0 && distance >= _params.GetStepScaling());
+      return (price - _positionInfo.PriceOpen() < 0 && distance >= GetStep(directionScaling, direction)); //_params.GetStepScaling(
    }
 
    return false;
@@ -322,7 +326,7 @@ bool CAutoProfit40::CheckScalingStep(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::ComputeTrailingStart(ENUM_DIRECTION direction)
+void CAutoSmartPro::ComputeTrailingStart(ENUM_DIRECTION direction)
 {
    if(direction == ENUM_DIRECTION_BULLISH && !_trailingValuesBuy.isTrailing)
    {
@@ -342,7 +346,7 @@ void CAutoProfit40::ComputeTrailingStart(ENUM_DIRECTION direction)
 //|(Check)
 //|(RecomputeAndPlaceStopLoss)
 //+------------------------------------------------------------------+
-bool CAutoProfit40::ManageTrailing(ENUM_DIRECTION direction)
+bool CAutoSmartPro::ManageTrailing(ENUM_DIRECTION direction)
 {
    double referencePrice = GetTrailingReferencePrice(direction); // IsTrailing ? TrailingStart : TrailingStep
    double currentPrice = GetTrailingCurrentPrice(direction);     //EndPrice(direction)
@@ -364,7 +368,7 @@ bool CAutoProfit40::ManageTrailing(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double CAutoProfit40::GetTrailingReferencePrice(ENUM_DIRECTION direction)
+double CAutoSmartPro::GetTrailingReferencePrice(ENUM_DIRECTION direction)
 {
    bool isTrailing = (direction == ENUM_DIRECTION_BULLISH) ? _trailingValuesBuy.isTrailing : _trailingValuesSell.isTrailing;
    if(isTrailing)
@@ -378,7 +382,7 @@ double CAutoProfit40::GetTrailingReferencePrice(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double CAutoProfit40::GetTrailingCurrentPrice(ENUM_DIRECTION direction)
+double CAutoSmartPro::GetTrailingCurrentPrice(ENUM_DIRECTION direction)
 {
    int type = CEnums::FromDirectionToMarketOrder(direction);
    double currentPrice = CTradeUtils::EndPrice(_params.GetSymbol(), type);
@@ -387,7 +391,7 @@ double CAutoProfit40::GetTrailingCurrentPrice(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double CAutoProfit40::GetTrailingCurrentStopLoss(ENUM_DIRECTION direction)
+double CAutoSmartPro::GetTrailingCurrentStopLoss(ENUM_DIRECTION direction)
 {
    if(direction == ENUM_DIRECTION_BULLISH)
       return (_trailingValuesBuy.trailingCurrentSLValue == WRONG_VALUE) ? (0.0) : _trailingValuesBuy.trailingCurrentSLValue;
@@ -400,7 +404,7 @@ double CAutoProfit40::GetTrailingCurrentStopLoss(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::AdjustTrailingValues(ENUM_DIRECTION direction, const double currentPrice, const double newStopLossPrice)
+void CAutoSmartPro::AdjustTrailingValues(ENUM_DIRECTION direction, const double currentPrice, const double newStopLossPrice)
 {
    if(direction == ENUM_DIRECTION_BULLISH)
    {
@@ -427,7 +431,7 @@ void CAutoProfit40::AdjustTrailingValues(ENUM_DIRECTION direction, const double 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-long CAutoProfit40::OpenTrade(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOrAveraging)
+long CAutoSmartPro::OpenTrade(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOrAveraging)
 {
 // Determine the number of lots to trade based on Martingale settings
    double lots = GetLots(direction, scalingOrAveraging);
@@ -457,7 +461,7 @@ long CAutoProfit40::OpenTrade(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOr
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-long CAutoProfit40::OpenFirstTrade(ENUM_DIRECTION direction)
+long CAutoSmartPro::OpenFirstTrade(ENUM_DIRECTION direction)
 {
    double lots = _params.GetLot();
 
@@ -475,7 +479,7 @@ long CAutoProfit40::OpenFirstTrade(ENUM_DIRECTION direction)
 //|
 //|
 //+------------------------------------------------------------------+
-double CAutoProfit40::GetLots(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOrAveraging)
+double CAutoSmartPro::GetLots(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOrAveraging)
 {
    double lots = _params.GetLot();
 
@@ -507,7 +511,7 @@ double CAutoProfit40::GetLots(ENUM_DIRECTION direction, ENUM_DIRECTION scalingOr
 //|Daca AM     trailing atunci sa pun trailing step la valoarea corecta si restu sa le resetez
 //|Daca NU AM  trailing atunci sa recalculez totul cum fac in mod obisnuit
 //+------------------------------------------------------------------+
-void CAutoProfit40::LoadGlobalVariables(ENUM_DIRECTION direction)
+void CAutoSmartPro::LoadGlobalVariables(ENUM_DIRECTION direction)
 {
 //Daca gasesc valorile pt trailing, continua
 //if (!CheckGlobalVariables(direction))
@@ -534,7 +538,7 @@ void CAutoProfit40::LoadGlobalVariables(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool CAutoProfit40::CheckGlobalVariables(ENUM_DIRECTION direction)
+bool CAutoSmartPro::CheckGlobalVariables(ENUM_DIRECTION direction)
 {
 
    if(direction == ENUM_DIRECTION_BULLISH &&
@@ -573,7 +577,7 @@ bool CAutoProfit40::CheckGlobalVariables(ENUM_DIRECTION direction)
 //| 3. Dac nu am SL la nicio tranzactie atunci
 //|   3) CompunteTrailingStart(direction)
 //+------------------------------------------------------------------+
-void CAutoProfit40::ComputeGlobalVariables(ENUM_DIRECTION direction)
+void CAutoSmartPro::ComputeGlobalVariables(ENUM_DIRECTION direction)
 {
 
    for(int index = PositionsTotal() - 1; index >= 0 && !IsStopped(); index--)
@@ -612,7 +616,7 @@ void CAutoProfit40::ComputeGlobalVariables(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::UpdateGlobalVariables()
+void CAutoSmartPro::UpdateGlobalVariables()
 {
    _globalVariableManager.Set(IS_TRAILING_BUY, _trailingValuesBuy.isTrailing);
    _globalVariableManager.Set(TRAILING_START_BUY, _trailingValuesBuy.trailingStartPrice);
@@ -627,7 +631,7 @@ void CAutoProfit40::UpdateGlobalVariables()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::OnReInit(void)
+void CAutoSmartPro::OnReInit(void)
 {
    CTradeUtils::CalculateTradesDetails(_sTradeDetails, _params.GetMagic(), _params.GetSymbol());
 
@@ -659,7 +663,7 @@ void CAutoProfit40::OnReInit(void)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool CAutoProfit40::CheckTrailingReference(ENUM_DIRECTION direction, const double referencePrice, const double currentPrice)
+bool CAutoSmartPro::CheckTrailingReference(ENUM_DIRECTION direction, const double referencePrice, const double currentPrice)
 {
    if(referencePrice <= 0.0)
       return false;
@@ -675,7 +679,7 @@ bool CAutoProfit40::CheckTrailingReference(ENUM_DIRECTION direction, const doubl
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double CAutoProfit40::GetSLTrailingPrice(ENUM_DIRECTION direction, const double currentPrice)
+double CAutoSmartPro::GetSLTrailingPrice(ENUM_DIRECTION direction, const double currentPrice)
 {
    if(direction == ENUM_DIRECTION_BULLISH)
    {
@@ -690,7 +694,7 @@ double CAutoProfit40::GetSLTrailingPrice(ENUM_DIRECTION direction, const double 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::ResetTrailingValues(ENUM_DIRECTION direction)
+void CAutoSmartPro::ResetTrailingValues(ENUM_DIRECTION direction)
 {
    if(direction == ENUM_DIRECTION_BULLISH)
    {
@@ -704,7 +708,7 @@ void CAutoProfit40::ResetTrailingValues(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double CAutoProfit40::ComputeTakeProfit(ENUM_DIRECTION direction)
+double CAutoSmartPro::ComputeTakeProfit(ENUM_DIRECTION direction)
 {
    int type = CEnums::FromDirectionToMarketOrder(direction);
    return CRiskService::AveragingTakeProfitForBatch(type, _params.GetTakeProfit(), _params.GetMagic(), _params.GetSymbol());
@@ -712,7 +716,7 @@ double CAutoProfit40::ComputeTakeProfit(ENUM_DIRECTION direction)
 //+------------------------------------------------------------------+
 //|     Aici trebuie sa ma gandesc ca daca cumva modific TP si am SL sa nu il pun 0, sa il las la fel|
 //+------------------------------------------------------------------+
-bool CAutoProfit40::ModifyTrades(ENUM_DIRECTION direction, const double takeProfitPrice = 0.0, const double stopLossPrice = 0.0)
+bool CAutoSmartPro::ModifyTrades(ENUM_DIRECTION direction, const double takeProfitPrice = 0.0, const double stopLossPrice = 0.0)
 {
    int type = CEnums::FromDirectionToMarketOrder(direction);
    return _tradeManager.ModifyMarketBatch(_params.GetMagic(), stopLossPrice, takeProfitPrice, _params.GetSymbol(), type, LOGGER_PREFIX_ERROR, true, false);
@@ -720,7 +724,7 @@ bool CAutoProfit40::ModifyTrades(ENUM_DIRECTION direction, const double takeProf
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool CAutoProfit40::CheckNewCandle()
+bool CAutoSmartPro::CheckNewCandle()
 {
    if(!TRADE_ON_NEW_CANDLE)
       return true;
@@ -730,7 +734,7 @@ bool CAutoProfit40::CheckNewCandle()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::DisplayExpertInfo(void)
+void CAutoSmartPro::DisplayExpertInfo(void)
 {
 // hedge.DisplayHedgeDashBoard();
 // return;
@@ -763,35 +767,36 @@ void CAutoProfit40::DisplayExpertInfo(void)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::PrintInputParams()
+void CAutoSmartPro::PrintInputParams()
 {
-   string msg = StringFormat("%s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, %s = %s, ",
-                             nameOf(mMagic), IntegerToString(_params.GetMagic()),
-                             nameOf(mIsMartingale), CString::FormatBool(_params.IsMartingale()),
-                             nameOf(mFactor), DoubleToString(_params.GetFactorAveraging(), 3),
-                             nameOf(mTakeProfit), IntegerToString(_params.GetTakeProfit()),
-                             nameOf(mStep), IntegerToString(_params.GetStepAveraging()),
-                             nameOf(mLot), DoubleToString(_params.GetLot(), 3),
-                             nameOf(mMaxLot), DoubleToString(_params.GetMaxLotAveraging(), 3),
-                             nameOf(mLateStart), IntegerToString(_params.GetLateStart()),
-//nameOf(mIsCloseAtDrawDown), CString::FormatBool(mIsCloseAtDrawDown),
-//nameOf(mDrawDownType), EnumToString(mDrawDownType),
-//nameOf(mDrawDownToCloseValue), DoubleToString(mDrawDownToCloseValue, 3),
-                             nameOf(mMaxTrades), IntegerToString(_params.GetMaxTrades())
-                            );
-   Print(msg);
+   _params.PrintParamters();
 }
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void CAutoProfit40::OnDeinit_(const int reason)
+void CAutoSmartPro::OnDeinit_(const int reason)
 {
-
    Comment("");
    _globalVariableManager.Flush();
 #ifdef __MQL5__
-   if(reason == REASON_PARAMETERS)
-      PrintInputParams();
+// if(reason == REASON_PARAMETERS)
+   PrintInputParams();
 #endif
+}
+
+
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+int CAutoSmartPro::GetStep(ENUM_DIRECTION scalingOrAveraging, ENUM_DIRECTION direction = ENUM_DIRECTION_NEUTRAL)
+{
+   if(scalingOrAveraging == ENUM_DIRECTION_BULLISH)
+      return _params.GetStepScaling();
+
+   if(scalingOrAveraging == ENUM_DIRECTION_BEARISH)
+      return _params.GetStepAveraging();
+
+   return 0;
 }
 //+------------------------------------------------------------------+

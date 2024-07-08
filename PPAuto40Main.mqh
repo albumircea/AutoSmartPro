@@ -9,11 +9,11 @@
 #include "AutoProfit40EA.mqh"
 
 
-LOGGER_DEFINE_FILENAME("AutoProfit40");
+LOGGER_DEFINE_FILENAME("AutoSmartPro");
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-BEGIN_INPUT(CAutoProfit40Params)
+BEGIN_INPUT(CAutoSmartProParams)
 INPUT(int, Magic, 1);               //Magic
 INPUT(bool, Martingale, false);     //Use Martingale
 INPUT(double, FactorAveraging, 1.0);         //Multiplier Averaging
@@ -46,6 +46,6 @@ INPUT(int, SpreadFilter, 50);      //Spread Filter
 INPUT(bool, DisplayInformaion, false);//Display Information Status
 END_INPUT
 //+------------------------------------------------------------------+
-DECLARE_EA(CAutoProfit40, true, "AutoProfit40");
+DECLARE_EA(CAutoSmartPro, true, "AutoSmartPro");
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
