@@ -47,7 +47,9 @@ class CAutoSmartProParams : public CAppParams
                      ObjectAttrProtected(int, MaxTrades);
                      ObjectAttrProtected(int, SpreadFilter);
                      ObjectAttrBoolProtected(DisplayInformaion);
+                     //21
                      ObjectAttrProtected(string, Symbol);
+                     
 
 public:
    virtual void              CAutoSmartProParams::PrintParamters(void)
@@ -90,11 +92,11 @@ public:
 
       //if(!CMQLInfo::IsTesting_()) return false;
 
-      if(!CAuthorization::Authorize(__authorizedAccounts))
-      {
-         Alert("This Expert Advisor is only available on demo accounts or strategy tester");
-         return false;
-      }
+      //if(!CAuthorization::Authorize(__authorizedAccounts))
+      //{
+      //   Alert("This Expert Advisor is only available on demo accounts or strategy tester");
+      //   return false;
+      //}
 
 
       if(mMagic <= 0)
